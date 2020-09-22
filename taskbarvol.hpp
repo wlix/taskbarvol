@@ -25,7 +25,9 @@ struct FormatItem {
 
 enum INDICATOR_TYPE {
 	TOOLTIP,
-	MODERN
+	MODERN,
+	NONE,
+	NUMBER_OF_INDICATOR_TYPE
 };
 
 typedef struct _CONFIG_DATA {

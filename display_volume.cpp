@@ -1,13 +1,11 @@
-#include <commctrl.h>
-#include <shlwapi.h>
-#include <sstream>
-
 #include "display_volume.hpp"
 #include "config.hpp"
 #include "mixer.hpp"
 
-#pragma comment(lib, "comctl32.lib")
-#pragma comment(lib, "shlwapi.lib")
+#include <shellapi.h>
+#include <commctrl.h>
+#include <shlwapi.h>
+#include <sstream>
 
 extern CONFIG_DATA  g_Config;
 extern HINSTANCE    g_hInst;
@@ -119,27 +117,280 @@ BOOL OpenScrollSndVol(WPARAM wParam, LPARAM lMousePosParam) {
 	return TRUE;
 }
 
+BOOL IsSndVolOpen() {
+	return (ValidateSndVolProcess() && ValidateSndVolWnd());
+}
+
+BOOL ScrollSndVol(WPARAM wParam, LPARAM lMousePosParam) {
+	GUITHREADINFO guithreadinfo;
+
+	guithreadinfo.cbSize = sizeof(GUITHREADINFO);
+
+	if (!GetGUIThreadInfo(GetWindowThreadProcessId(hSndVolWnd, NULL), &guithreadinfo)) {
+		return FALSE;
+	}
+
+	PostMessage(guithreadinfo.hwndFocus, WM_MOUSEWHEEL, wParam, lMousePosParam);
+	return TRUE;
+}
+
+void SetSndVolTimer() {
+	nCloseSndVolTimer = SetTimer(NULL, nCloseSndVolTimer, 1, CloseSndVolTimerProc);
+	nCloseSndVolTimerCount = 0;
+}
+
+void ResetSndVolTimer() {
+	if (nCloseSndVolTimer != 0) { SetSndVolTimer(); }
+}
+
+void KillSndVolTimer() {
+	if (nCloseSndVolTimer != 0) {
+		KillTimer(NULL, nCloseSndVolTimer);
+		nCloseSndVolTimer = 0;
+	}
+}
+
+void CleanupSndVol() {
+	KillSndVolTimer();
+
+	if (hSndVolProcess) {
+		CloseHandle(hSndVolProcess);
+		hSndVolProcess = NULL;
+		hSndVolWnd = NULL;
+	}
+}
+
+BOOL OpenScrollSndVolInternal(WPARAM wParam, LPARAM lMousePosParam, HWND hVolumeAppWnd, BOOL* pbOpened) {
+	HWND hSndVolDlg = GetSndVolDlg(hVolumeAppWnd);
+	if (hSndVolDlg) {
+		if (GetWindowTextLength(hSndVolDlg) == 0) { // Volume control
+			if (IsSndVolWndInitialized(hSndVolDlg) && MoveSndVolCenterMouse(hSndVolDlg)) {
+				SetForegroundWindow(hVolumeAppWnd);
+				PostMessage(hVolumeAppWnd, WM_USER + 35, 0, 0);
+
+				*pbOpened = TRUE;
+				return TRUE;
+			}
+		}
+		else if (IsWindowVisible(hSndVolDlg)) { // Another dialog, e.g. volume mixer
+			SetForegroundWindow(hVolumeAppWnd);
+			PostMessage(hVolumeAppWnd, WM_USER + 35, 0, 0);
+
+			*pbOpened = FALSE;
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+BOOL ValidateSndVolProcess() {
+	if (!hSndVolProcess) { return FALSE; }
+
+	if (WaitForSingleObject(hSndVolProcess, 0) != WAIT_TIMEOUT) {
+		CloseHandle(hSndVolProcess);
+		hSndVolProcess = NULL;
+		hSndVolWnd = NULL;
+		return FALSE;
+	}
+	return TRUE;
+}
+
+BOOL ValidateSndVolWnd() {
+	HWND hForegroundWnd;
+	DWORD dwProcessId;
+	WCHAR szClass[sizeof("#32770") + 1];
+
+	hForegroundWnd = GetForegroundWindow();
+
+	if (hSndVolWnd == hForegroundWnd) { return TRUE; }
+
+	GetWindowThreadProcessId(hForegroundWnd, &dwProcessId);
+
+	if (GetProcessId(hSndVolProcess) == dwProcessId) {
+		GetClassName(hForegroundWnd, szClass, sizeof("#32770") + 1);
+
+		if (lstrcmp(szClass, L"#32770") == 0) {
+			hSndVolWnd = hForegroundWnd;
+			bCloseOnMouseLeave = FALSE;
+			return TRUE;
+		}
+	}
+	hSndVolWnd = NULL;
+	return FALSE;
+}
+
+void CALLBACK CloseSndVolTimerProc(HWND hWnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime) {
+	POINT pt;
+	RECT rc;
+
+	if (g_Config.indicator_type == INDICATOR_TYPE::TOOLTIP) {
+		nCloseSndVolTimerCount++;
+		if (nCloseSndVolTimerCount < g_Config.display_time) { return; }
+		HideSndVolTooltip();
+	} else if (g_Config.indicator_type == INDICATOR_TYPE::MODERN && CanUseModernIndicator()) {
+		if (!bSndVolModernAppeared) {
+			if (GetOpenSndVolModernIndicatorWnd()) {
+				bSndVolModernAppeared = TRUE;
+				nCloseSndVolTimerCount = 1;
+				return;
+			}
+			else {
+				nCloseSndVolTimerCount++;
+				if (nCloseSndVolTimerCount < g_Config.display_time) { return; }
+			}
+		} else if (GetOpenSndVolModernIndicatorWnd()) {
+			if (!IsCursorUnderSndVolModernIndicatorWnd()) {
+				nCloseSndVolTimerCount++;
+			} else {
+				nCloseSndVolTimerCount = 0;
+			}
+			if (nCloseSndVolTimerCount < g_Config.display_time) { return; }
+			HideSndVolModernIndicator();
+		}
+		EndSndVolModernIndicatorSession();
+	} else {
+		if (ValidateSndVolProcess()) {
+			if (WaitForInputIdle(hSndVolProcess, 0) != 0) { return; }
+
+			if (ValidateSndVolWnd()) {
+				nCloseSndVolTimerCount++;
+				if (nCloseSndVolTimerCount < g_Config.display_time) { return; }
+
+				GetCursorPos(&pt);
+				GetWindowRect(hSndVolWnd, &rc);
+
+				if (!PtInRect(&rc, pt)) {
+					PostMessage(hSndVolWnd, WM_ACTIVATE, MAKEWPARAM(WA_INACTIVE, FALSE), (LPARAM)NULL);
+				} else {
+					bCloseOnMouseLeave = TRUE;
+				}
+			}
+		}
+	}
+
+	KillTimer(NULL, nCloseSndVolTimer);
+	nCloseSndVolTimer = 0;
+}
+
+HWND GetSndVolDlg(HWND hVolumeAppWnd) {
+	HWND hWnd = NULL;
+	EnumThreadWindows(GetWindowThreadProcessId(hVolumeAppWnd, NULL), EnumThreadFindSndVolWnd, (LPARAM)&hWnd);
+	return hWnd;
+}
+
+BOOL CALLBACK EnumThreadFindSndVolWnd(HWND hWnd, LPARAM lParam) {
+	WCHAR szClass[16];
+
+	GetClassName(hWnd, szClass, _countof(szClass));
+	if (lstrcmp(szClass, L"#32770") == 0) {
+		*(HWND*)lParam = hWnd;
+		return FALSE;
+	}
+	return TRUE;
+}
+
+BOOL IsSndVolWndInitialized(HWND hWnd) {
+	HWND hChildDlg;
+
+	hChildDlg = FindWindowEx(hWnd, NULL, L"#32770", NULL);
+	if (!hChildDlg) { return FALSE; }
+
+	if (!(GetWindowLong(hChildDlg, GWL_STYLE) & WS_VISIBLE)) {
+		return FALSE;
+	}
+	return TRUE;
+}
+
+BOOL MoveSndVolCenterMouse(HWND hWnd) {
+	NOTIFYICONIDENTIFIER notifyiconidentifier;
+	BOOL bCompositionEnabled;
+	POINT pt;
+	SIZE size;
+	RECT rc, rcExclude, rcInflate;
+	int nInflate;
+
+	ZeroMemory(&notifyiconidentifier, sizeof(NOTIFYICONIDENTIFIER));
+	notifyiconidentifier.cbSize = sizeof(NOTIFYICONIDENTIFIER);
+	memcpy(&notifyiconidentifier.guidItem, "\x73\xAE\x20\x78\xE3\x23\x29\x42\x82\xC1\xE4\x1C\xB6\x7D\x5B\x9C", sizeof(GUID));
+
+	if (Shell_NotifyIconGetRect(&notifyiconidentifier, &rcExclude) != S_OK) { return FALSE; }
+
+	GetCursorPos(&pt);
+	GetWindowRect(hWnd, &rc);
+
+	nInflate = 0;
+
+	if (DwmIsCompositionEnabled(&bCompositionEnabled) == S_OK && bCompositionEnabled) {
+		memcpy(&notifyiconidentifier.guidItem, "\x43\x65\x4B\x96\xAD\xBB\xEE\x44\x84\x8A\x3A\x95\xD8\x59\x51\xEA", sizeof(GUID));
+
+		if (Shell_NotifyIconGetRect(&notifyiconidentifier, &rcInflate) == S_OK) {
+			nInflate = rcInflate.bottom - rcInflate.top;
+			InflateRect(&rc, nInflate, nInflate);
+		}
+	}
+
+	size.cx = rc.right - rc.left;
+	size.cy = rc.bottom - rc.top;
+
+	if (!CalculatePopupWindowPosition(&pt, &size, TPM_CENTERALIGN | TPM_VCENTERALIGN | TPM_VERTICAL | TPM_WORKAREA, &rcExclude, &rc)) {
+		return FALSE;
+	}
+	SetWindowPos(hWnd, NULL, rc.left + nInflate, rc.top + nInflate, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
+
+	return TRUE;
+}
+
+void OnSndVolMouseMove_MouseHook(POINT pt) {
+	HWND hWnd;
+
+	if (bCloseOnMouseLeave) {
+		hWnd = WindowFromPoint(pt);
+
+		if (hWnd == hSndVolWnd || IsChild(hSndVolWnd, hWnd)) {
+			bCloseOnMouseLeave = FALSE;
+			PostMessage(g_hTaskbarWnd, uTweakerMsg, (LPARAM)OnSndVolMouseLeaveClose, MSG_DLL_CALLFUNC);
+		}
+	}
+}
+
+void OnSndVolMouseClick_MouseHook(POINT pt) {
+	PostMessage(g_hTaskbarWnd, uTweakerMsg, (LPARAM)OnSndVolMouseClick, MSG_DLL_CALLFUNC);
+}
+
+void OnSndVolMouseWheel_MouseHook(POINT pt) {
+	PostMessage(g_hTaskbarWnd, uTweakerMsg, (LPARAM)OnSndVolMouseWheel, MSG_DLL_CALLFUNC);
+}
+
+static void OnSndVolMouseLeaveClose() {
+	SetSndVolTimer();
+}
+
+static void OnSndVolMouseClick() {
+	bCloseOnMouseLeave = FALSE;
+	KillSndVolTimer();
+}
+
+static void OnSndVolMouseWheel() {
+	ResetSndVolTimer();
+}
+
+
 // --------------------------------------------------------
 //  ToolTip indicator
 // --------------------------------------------------------
-void OnSndVolTooltipTimer()
-{
+void OnSndVolTooltipTimer() {
 	HWND hTrayToolbarWnd;
 	int index;
 	HWND hTooltipWnd;
 
-	if (!bTooltipTimerOn)
-		return;
-
+	if (!bTooltipTimerOn) { return; }
 	bTooltipTimerOn = FALSE;
 
 	index = GetSndVolTrayIconIndex(&hTrayToolbarWnd);
-	if (index < 0)
-		return;
+	if (index < 0) { return; }
 
 	hTooltipWnd = (HWND)SendMessage(hTrayToolbarWnd, TB_GETTOOLTIPS, 0, 0);
-	if (hTooltipWnd)
-		ShowWindow(hTooltipWnd, SW_HIDE);
+	if (hTooltipWnd) { ShowWindow(hTooltipWnd, SW_HIDE); }
 }
 
 BOOL ShowSndVolTooltip() {
@@ -147,8 +398,7 @@ BOOL ShowSndVolTooltip() {
 	int index;
 
 	index = GetSndVolTrayIconIndex(&hTrayToolbarWnd);
-	if (index < 0)
-		return FALSE;
+	if (index < 0) { return FALSE; }
 
 	SendMessage(hTrayToolbarWnd, TB_SETHOTITEM2, -1, 0);
 	SendMessage(hTrayToolbarWnd, TB_SETHOTITEM2, index, 0);
@@ -160,23 +410,20 @@ BOOL ShowSndVolTooltip() {
 	return TRUE;
 }
 
-BOOL HideSndVolTooltip()
-{
+BOOL HideSndVolTooltip() {
 	HWND hTrayToolbarWnd;
 	int index;
 
 	index = GetSndVolTrayIconIndex(&hTrayToolbarWnd);
-	if (index < 0)
-		return FALSE;
+	if (index < 0) { return FALSE; }
 
-	if (SendMessage(hTrayToolbarWnd, TB_GETHOTITEM, 0, 0) == index)
+	if (SendMessage(hTrayToolbarWnd, TB_GETHOTITEM, 0, 0) == index) {
 		SendMessage(hTrayToolbarWnd, TB_SETHOTITEM2, -1, 0);
-
+	}
 	return TRUE;
 }
 
-int GetSndVolTrayIconIndex(HWND* phTrayToolbarWnd)
-{
+int GetSndVolTrayIconIndex(HWND* phTrayToolbarWnd) {
 	RECT rcSndVolIcon;
 	HWND hTrayNotifyWnd, hTrayToolbarWnd;
 	LONG_PTR lpTrayNotifyLongPtr;
@@ -316,116 +563,14 @@ BOOL CALLBACK EnumThreadFindSndVolTrayControlWnd(HWND hWnd, LPARAM lParam) {
 }
 
 // --------------------------------------------------------
-//  ツールチップ関連
+//    Other functions
 // --------------------------------------------------------
-// ツールチップ消去用のタイマー
-VOID CALLBACK TimerProc_Tip(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
-{
-	SendMessage(g_hToolTipWnd, TTM_TRACKACTIVATE, (WPARAM)FALSE, NULL);
-	KillTimer(NULL, g_Config.id_timer);
-	g_config.id_tip_timer = 0;
-}
+BOOL GetSndVolTrayIconRect(RECT* prc) {
+	NOTIFYICONIDENTIFIER notifyiconidentifier;
 
-// ツールチップを表示
-BOOL ShowToolTip(const wchar_t* szText, const wchar_t* szTitle)
-{
-	TTTOOLINFOW ti = { 0 };
-	RECT rc;
+	ZeroMemory(&notifyiconidentifier, sizeof(NOTIFYICONIDENTIFIER));
+	notifyiconidentifier.cbSize = sizeof(NOTIFYICONIDENTIFIER);
+	memcpy(&notifyiconidentifier.guidItem, "\x73\xAE\x20\x78\xE3\x23\x29\x42\x82\xC1\xE4\x1C\xB6\x7D\x5B\x9C", sizeof(GUID));
 
-	ti.cbSize = sizeof(TOOLINFO);
-	ti.uFlags = TTF_TRACK | TTF_ABSOLUTE;
-	ti.lpszText = (LPWSTR)szText;
-
-	if (szTitle)
-		SendMessageW(g_hToolTipWnd, TTM_SETTITLE, (WPARAM)TTI_INFO, (LPARAM)szTitle);
-	SendMessageW(g_hToolTipWnd, TTM_ADDTOOL, 0, (LPARAM)&ti);
-	SendMessageW(g_hToolTipWnd, TTM_UPDATETIPTEXT, 0, (LPARAM)&ti);
-
-	SendMessageW(g_hToolTipWnd, TTM_TRACKACTIVATE, (WPARAM)TRUE, (LPARAM)&ti);
-
-	GetWindowRect(g_hToolTipWnd, &rc);
-	SendMessageW(g_hToolTipWnd, TTM_TRACKPOSITION, 0,
-		MAKELPARAM((GetSystemMetrics(SM_CXSCREEN) - (rc.right - rc.left)) * g_Config.display_position.x / 100,
-			(GetSystemMetrics(SM_CYSCREEN) - (rc.bottom - rc.top)) * g_Config.display_position.y / 100));
-
-	SetWindowPos(g_hToolTipWnd, HWND_TOPMOST, 0, 0, 0, 0,
-		SWP_SHOWWINDOW | SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-
-	if (g_Config.id_timer != 0)
-		KillTimer(NULL, g_Config.id_timer);
-	g_Config.id_timer = SetTimer(NULL, 0, g_Config.display_time, TimerProc_Tip);
-	return TRUE;
-}
-
-
-// Snc.dllで表示
-void ShowSnc(LPCWSTR title, LPCWSTR text)
-{
-	wchar_t Buffer[512 + 512 + MAX_PATH + 64] = L"";
-	wchar_t wTitle[512] = L"", wText[512] = L"", wTimeout[32] = L"", wIcon[MAX_PATH] = L"";
-
-	if (title != NULL)
-		lstrcpyW(wTitle, title);
-	lstrcpyW(wText, text);
-	wsprintfW(wTimeout, L"%d", g_Config.display_time / 1000);
-
-	GetModuleFileNameW(g_hInst, wIcon, MAX_PATH);
-	PathRenameExtensionW(wIcon, L".ico");
-
-	lstrcatW(Buffer, L"\"/title=");
-	lstrcatW(Buffer, wTitle);
-	lstrcatW(Buffer, L"\" ");
-
-	lstrcatW(Buffer, L"\"/text=");
-	lstrcatW(Buffer, wText);
-	lstrcatW(Buffer, L"\" ");
-
-	lstrcatW(Buffer, L"/timeout=");
-	lstrcatW(Buffer, wTimeout);
-	lstrcatW(Buffer, L" ");
-
-	if (PathFileExistsW(wIcon))
-	{
-		lstrcatW(Buffer, L"\"/icon=");
-		lstrcatW(Buffer, wIcon);
-		lstrcatW(Buffer, L"\"");
-	}
-
-	COPYDATASTRUCT cd;
-	cd.dwData = 0x100;
-	cd.cbData = (lstrlenW(Buffer) + 1) * sizeof(wchar_t);
-	cd.lpData = Buffer;
-
-	HWND hwnd = FindWindowW(NULL, L"Snarl");
-	if (hwnd != NULL)
-		SendMessage(hwnd, WM_COPYDATA, 0, (LPARAM)&cd);
-}
-
-// --------------------------------------------------------
-//    ボリュームを表示する
-// --------------------------------------------------------
-// フォーマット
-BOOL FormatText(const FormatItem& format, std::wstring& wstr) {
-	std::wstringstream wss;
-
-	switch (format.type) {
-	case FormatItem::STRING:
-		wss << format.str;
-		break;
-	case FormatItem::VOLUME:
-		BOOL mute;
-		get_mute_state(&mute);
-		if (mute) {
-			wss << L"Mute";
-		}
-		else {
-			float volume = .0f;
-			get_master_volume(&volume);
-			wss << (volume * 100.0f) << L"%";
-		}
-		break;
-	}
-
-	wstr = wss.str();
-	return TRUE;
+	return (Shell_NotifyIconGetRect(&notifyiconidentifier, prc) == S_OK);
 }

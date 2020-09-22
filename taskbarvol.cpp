@@ -4,8 +4,6 @@
 //
 //---------------------------------------------------------------------------//
 
-#include <commctrl.h>
-
 #include "Plugin.hpp"
 #include "MessageDef.hpp"
 #include "Utility.hpp"
@@ -13,7 +11,7 @@
 #include "config.hpp"
 #include "mixer.hpp"
 
-#pragma comment(lib, "comctl32.lib")
+#include <commctrl.h>
 
 //---------------------------------------------------------------------------//
 //

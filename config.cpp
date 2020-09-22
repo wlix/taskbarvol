@@ -1,10 +1,8 @@
-#include <strsafe.h>
-#include <shlwapi.h>
-
 #include "config.hpp"
 #include "Utility.hpp"
 
-#pragma comment(lib, "shlwapi.lib")
+#include <strsafe.h>
+#include <shlwapi.h>
 
 LPCWSTR kMutexName = L"TaskBarVolWin10Mutex";
 
@@ -47,6 +45,10 @@ void config::load_config() {
 	wchar_t szBuf[32];
 	::GetPrivateProfileStringW(L"Setting", L"IndicatorType", L"Modern", szBuf, sizeof(szBuf) / sizeof(wchar_t), inipath);
 	if (lstrcmpiW(szBuf, L"Modern") == 0) {
-		g_Config.indicator_type = MODERN;
+		g_Config.indicator_type = INDICATOR_TYPE::MODERN;
+	} else if (lstrcmpiW(szBuf, L"ToolTip") == 0) {
+		g_Config.indicator_type = INDICATOR_TYPE::TOOLTIP;
+	} else {
+
 	}
 }
