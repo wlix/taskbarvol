@@ -12,11 +12,15 @@ extern HINSTANCE    g_hInst;
 extern HWND         g_hTaskbarWnd;
 extern HWND         g_hToolTipWnd;
 
-BOOL bTooltipTimerOn = FALSE;
-
-BOOL bSndVolModernLaunched = FALSE;
-BOOL bSndVolModernAppeared = FALSE;
-HWND hSndVolModernPreviousForegroundWnd = nullptr;
+HANDLE        hSndVolProcess                     = nullptr;
+HWND          hSndVolWnd                         = nullptr;
+UINT_PTR      nCloseSndVolTimer                  = NULL;
+int           nCloseSndVolTimerCount             = 0;
+volatile BOOL bCloseOnMouseLeave                 = FALSE;
+BOOL          bTooltipTimerOn                    = FALSE;
+BOOL          bSndVolModernLaunched              = FALSE;
+BOOL          bSndVolModernAppeared              = FALSE;
+HWND          hSndVolModernPreviousForegroundWnd = nullptr;
 
 BOOL OpenScrollSndVol(WPARAM wParam, LPARAM lMousePosParam) {
 	HANDLE hMutex;
