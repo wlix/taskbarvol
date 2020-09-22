@@ -305,6 +305,8 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="config.cpp" />
+    <ClCompile Include="display_volume.cpp" />
     <ClCompile Include="mixer.cpp" />
     <ClCompile Include="taskbarvol.cpp" />
     <ClCompile Include="MessageDef.cpp" />
@@ -312,6 +314,8 @@
     <ClCompile Include="Utility.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="config.hpp" />
+    <ClInclude Include="display_volume.hpp" />
     <ClInclude Include="mixer.hpp" />
     <ClInclude Include="taskbarvol.hpp" />
     <ClInclude Include="MessageDef.hpp" />
