@@ -12,3 +12,4 @@ BOOL adjust_master_volume(int dif);
 BOOL get_mute_state(BOOL* state);
 BOOL set_mute_state(BOOL state);
 BOOL toggle_mute_state();
+BOOL is_mute_and_not_zero(BOOL* state);

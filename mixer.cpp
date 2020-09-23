@@ -81,3 +81,14 @@ BOOL toggle_mute_state() {
 
 	return	TRUE;
 }
+
+BOOL is_mute_and_not_zero(BOOL* state) {
+	float vol;
+	BOOL mute;
+
+	if (get_master_volume(&vol) == FALSE) { return FALSE; }
+	if (get_mute_state(&mute)   == FALSE) { return FALSE; }
+	*state = mute && (vol > 0.005f);
+
+	return TRUE;
+}

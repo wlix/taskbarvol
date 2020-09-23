@@ -2,8 +2,9 @@
 #include "config.hpp"
 #include "mixer.hpp"
 
-#include <shellapi.h>
 #include <commctrl.h>
+#include <dwmapi.h>
+#include <shellapi.h>
 #include <shlwapi.h>
 #include <sstream>
 
@@ -42,60 +43,48 @@ BOOL OpenScrollSndVol(WPARAM wParam, LPARAM lMousePosParam) {
 	}
 
 	if (ValidateSndVolProcess()) {
-		if (WaitForInputIdle(hSndVolProcess, 0) == 0) // If not initializing
-		{
-			if (ValidateSndVolWnd())
-			{
+		if (WaitForInputIdle(hSndVolProcess, 0) == 0) { // If not initializing
+			if (ValidateSndVolWnd()) {
 				ScrollSndVol(wParam, lMousePosParam);
-
 				return FALSE; // False because we didn't open it, it was open
 			}
-			else
-			{
+			else {
 				hVolumeAppWnd = FindWindow(L"Windows Volume App Window", L"Windows Volume App Window");
-				if (hVolumeAppWnd)
-				{
+				if (hVolumeAppWnd) {
 					GetWindowThreadProcessId(hVolumeAppWnd, &dwProcessId);
 
-					if (GetProcessId(hSndVolProcess) == dwProcessId)
-					{
+					if (GetProcessId(hSndVolProcess) == dwProcessId) {
 						BOOL bOpened;
-						if (OpenScrollSndVolInternal(wParam, lMousePosParam, hVolumeAppWnd, &bOpened))
+						if (OpenScrollSndVolInternal(wParam, lMousePosParam, hVolumeAppWnd, &bOpened)) {
 							return bOpened;
+						}
 					}
 				}
 			}
 		}
-
 		return FALSE;
 	}
 
 	hMutex = OpenMutex(SYNCHRONIZE, FALSE, L"Windows Volume App Window");
-	if (hMutex)
-	{
+	if (hMutex) {
 		CloseHandle(hMutex);
 
 		hVolumeAppWnd = FindWindow(L"Windows Volume App Window", L"Windows Volume App Window");
-		if (hVolumeAppWnd)
-		{
+		if (hVolumeAppWnd) {
 			GetWindowThreadProcessId(hVolumeAppWnd, &dwProcessId);
 
 			hSndVolProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, dwProcessId);
-			if (hSndVolProcess)
-			{
-				if (WaitForInputIdle(hSndVolProcess, 0) == 0) // if not initializing
-				{
-					if (ValidateSndVolWnd())
-					{
+			if (hSndVolProcess) {
+				if (WaitForInputIdle(hSndVolProcess, 0) == 0) { // if not initializing
+					if (ValidateSndVolWnd()) {
 						ScrollSndVol(wParam, lMousePosParam);
-
 						return FALSE; // False because we didn't open it, it was open
 					}
-					else
-					{
+					else {
 						BOOL bOpened;
-						if (OpenScrollSndVolInternal(wParam, lMousePosParam, hVolumeAppWnd, &bOpened))
+						if (OpenScrollSndVolInternal(wParam, lMousePosParam, hVolumeAppWnd, &bOpened)) {
 							return bOpened;
+						}
 					}
 				}
 			}
@@ -109,8 +98,9 @@ BOOL OpenScrollSndVol(WPARAM wParam, LPARAM lMousePosParam) {
 	ZeroMemory(&si, sizeof(STARTUPINFO));
 	si.cb = sizeof(STARTUPINFO);
 
-	if (!CreateProcess(NULL, szCommandLine, NULL, NULL, FALSE, ABOVE_NORMAL_PRIORITY_CLASS | CREATE_SUSPENDED, NULL, NULL, &si, &pi))
+	if (!CreateProcess(NULL, szCommandLine, NULL, NULL, FALSE, ABOVE_NORMAL_PRIORITY_CLASS | CREATE_SUSPENDED, NULL, NULL, &si, &pi)) {
 		return FALSE;
+	}
 
 	AllowSetForegroundWindow(pi.dwProcessId);
 	ResumeThread(pi.hThread);
@@ -344,7 +334,8 @@ BOOL MoveSndVolCenterMouse(HWND hWnd) {
 	return TRUE;
 }
 
-void OnSndVolMouseMove_MouseHook(POINT pt) {
+void OnSndVolMouseMove(POINT pt)
+{
 	HWND hWnd;
 
 	if (bCloseOnMouseLeave) {
@@ -352,29 +343,17 @@ void OnSndVolMouseMove_MouseHook(POINT pt) {
 
 		if (hWnd == hSndVolWnd || IsChild(hSndVolWnd, hWnd)) {
 			bCloseOnMouseLeave = FALSE;
-			PostMessage(g_hTaskbarWnd, uTweakerMsg, (LPARAM)OnSndVolMouseLeaveClose, MSG_DLL_CALLFUNC);
+			SetSndVolTimer();
 		}
 	}
 }
 
-void OnSndVolMouseClick_MouseHook(POINT pt) {
-	PostMessage(g_hTaskbarWnd, uTweakerMsg, (LPARAM)OnSndVolMouseClick, MSG_DLL_CALLFUNC);
-}
-
-void OnSndVolMouseWheel_MouseHook(POINT pt) {
-	PostMessage(g_hTaskbarWnd, uTweakerMsg, (LPARAM)OnSndVolMouseWheel, MSG_DLL_CALLFUNC);
-}
-
-static void OnSndVolMouseLeaveClose() {
-	SetSndVolTimer();
-}
-
-static void OnSndVolMouseClick() {
+void OnSndVolMouseClick() {
 	bCloseOnMouseLeave = FALSE;
 	KillSndVolTimer();
 }
 
-static void OnSndVolMouseWheel() {
+void OnSndVolMouseWheel() {
 	ResetSndVolTimer();
 }
 
