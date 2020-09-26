@@ -92,3 +92,19 @@ BOOL is_mute_and_not_zero(BOOL* state) {
 
 	return TRUE;
 }
+
+BOOL master_volume_stepup() {
+	if (FAILED(pAudioEndVol->VolumeStepUp(NULL))) {
+		volume_setting_deinit();
+		return FALSE;
+	}
+	return TRUE;
+}
+
+BOOL master_volume_stepdown() {
+	if (FAILED(pAudioEndVol->VolumeStepDown(NULL))) {
+		volume_setting_deinit();
+		return FALSE;
+	}
+	return TRUE;
+}

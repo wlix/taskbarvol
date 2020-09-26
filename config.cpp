@@ -36,19 +36,24 @@ void config::load_config() {
 	size_t len = ::GetModuleFileNameW(g_hInst, inipath, MAX_PATH);
 	::PathRenameExtensionW(inipath, L".ini");
 
-	g_Config.bReverse     = ::GetPrivateProfileIntW(L"Setting", L"Reverse",     0,     inipath);
-	g_Config.difference   = ::GetPrivateProfileIntW(L"Setting", L"Difference",  1,     inipath);
-	g_Config.bUseTitle    = ::GetPrivateProfileIntW(L"Setting", L"UseTitle",    TRUE,  inipath);
-	g_Config.display_time = ::GetPrivateProfileIntW(L"Setting", L"DisplayTime", 2000,  inipath);
-	g_Config.bUseSnc      = ::GetPrivateProfileIntW(L"Setting", L"UseSnc",      FALSE, inipath);
+	g_Config.bReverse           = ::GetPrivateProfileIntW(L"Setting", L"Reverse",     0,     inipath);
+	g_Config.difference         = ::GetPrivateProfileIntW(L"Setting", L"Difference",  2,     inipath);
+	g_Config.display_time       = ::GetPrivateProfileIntW(L"Setting", L"DisplayTime", 2000,  inipath);
+	g_Config.display_position.x = ::GetPrivateProfileIntW(L"Setting", L"PositionX",   99,    inipath);
+	g_Config.display_position.y = ::GetPrivateProfileIntW(L"Setting", L"PositionY",   96,    inipath);
+	g_Config.font_height        = ::GetPrivateProfileIntW(L"Setting", L"FontHeight",  10,    inipath);
 
-	wchar_t szBuf[32];
-	::GetPrivateProfileStringW(L"Setting", L"IndicatorType", L"Modern", szBuf, sizeof(szBuf) / sizeof(wchar_t), inipath);
-	if (lstrcmpiW(szBuf, L"Modern") == 0) {
-		g_Config.indicator_type = INDICATOR_TYPE::MODERN;
+	wchar_t szBuf[MAX_PATH];
+	::GetPrivateProfileStringW(L"Setting", L"FontName", L"MS UI Gothic", szBuf, sizeof(szBuf) / sizeof(wchar_t), inipath);
+
+	::GetPrivateProfileStringW(L"Setting", L"IndicatorType", L"ToolTip", szBuf, sizeof(szBuf) / sizeof(wchar_t), inipath);
+	if (lstrcmpiW(szBuf, L"KeyHack") == 0) {
+		g_Config.indicator_type = INDICATOR_TYPE::KEYHACK;
 	} else if (lstrcmpiW(szBuf, L"ToolTip") == 0) {
 		g_Config.indicator_type = INDICATOR_TYPE::TOOLTIP;
+	} else if (lstrcmpiW(szBuf, L"SndVol") == 0) {
+		g_Config.indicator_type = INDICATOR_TYPE::SNDVOL;
 	} else {
-
+		g_Config.indicator_type = INDICATOR_TYPE::NONE;
 	}
 }

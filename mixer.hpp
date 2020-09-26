@@ -13,3 +13,5 @@ BOOL get_mute_state(BOOL* state);
 BOOL set_mute_state(BOOL state);
 BOOL toggle_mute_state();
 BOOL is_mute_and_not_zero(BOOL* state);
+BOOL master_volume_stepup();
+BOOL master_volume_stepdown();
